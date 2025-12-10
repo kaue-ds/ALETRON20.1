@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>AutoCheck Vistoria - Standalone</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Lato:wght@400;700&family=Montserrat:wght@400;700&family=Playfair+Display:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#f9fafb',
+                600: '#000000',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      body {overscroll-behavior-y: none;}
+      @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+    </style>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.292.0",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+      }
+    }
+    </script>
+</head>
+<body class="bg-white text-gray-900 h-screen overflow-hidden font-sans">
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { createClient } from '@supabase/supabase-js';
+      import { 
+        LayoutDashboard, ClipboardList, Camera, Save, LogOut, History, Settings, 
+        User, Lock, ShieldCheck, Mail, Hash, Truck, AlertCircle, 
+        ThumbsUp, ThumbsDown, AlertTriangle, Slash, Fuel, Disc, Trash2, 
+        CheckCircle2, RefreshCw, PenTool, Eraser, FileText, Users, Activity, 
+        UserPlus, Download, Search, Eye, Power, AlertOctagon, Edit, Palette, Image as ImageIcon, Check, Loader2, Save as SaveIcon
+      } from 'lucide-react';
+
+      // --- CONFIG ---
+      const supabaseUrl = 'https://oksolwnelvkddapbwulb.supabase.co';
+      const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rc29sd25lbHZrZGRhcGJ3dWxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2ODA1MzQsImV4cCI6MjA4MDI1NjUzNH0.8NaM2JP63BxeLObVVabi77xntxHf6iiVccyXUVkevpw';
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const ROOT_USERNAME = 'ADMIN2025';
+      const SUPER_ADMIN_ID = '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+      const SESSION_KEY = 'autocheck_session_v2';
+      
+      const FONTS = [
+        { name: 'Padrão', value: 'ui-sans-serif, system-ui, sans-serif' },
+        { name: 'Inter', value: "'Inter', sans-serif" },
+        { name: 'Roboto', value: "'Roboto', sans-serif" },
+        { name: 'Montserrat', value: "'Montserrat', sans-serif" },
+        { name: 'Lato', value: "'Lato', sans-serif" },
+        { name: 'Playfair', value: "'Playfair Display', serif" },
+      ];
+
+      // --- HELPER: SAFE ID LOOKUP ---
+      const findUserRow = async (targetId) => {
+        try {
+           const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetId);
+           if (isUUID) {
+             const { data, error } = await supabase.from('users').select('*').eq('id', targetId).maybeSingle();
+             if (!error && data) return data;
+           }
+        } catch(e) {}
+        try {
+           const { data } = await supabase.from('users').select('*').eq('data->>id', targetId).maybeSingle();
+           return data;
+        } catch(e) { return null; }
+      };
+
+      // --- AUTH SERVICE ---
+      const loginUser = async (username, password) => {
+        if (username === ROOT_USERNAME && password === '17012007ADMIN') {
+           const admin = { id: SUPER_ADMIN_ID, username: ROOT_USERNAME, password: '17012007ADMIN', role: 'super_admin', name: 'Super Admin Principal', isActive: true };
+           localStorage.setItem(SESSION_KEY, JSON.stringify(admin));
+           return admin;
+        }
+        try {
+          const { data } = await supabase.from('users').select('data').eq('data->>username', username).maybeSingle();
+          if (!data) throw new Error("Usuário não encontrado.");
+          const user = data.data;
+          if (user.password !== password) throw new Error("Senha incorreta.");
+          if (user.isActive === false) throw new Error("Conta desativada.");
+          localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+          return user;
+        } catch (e) {
+          alert(e.message);
+          return null;
+        }
+      };
+
+      const getCurrentUser = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; } };
+      const logoutUser = () => localStorage.removeItem(SESSION_KEY);
+
+      // --- ADMIN SERVICE ---
+      const getUsers = async () => {
+        const { data } = await supabase.from('users').select('data');
+        return data ? data.map(r => r.data) : [];
+      };
+
+      const toggleStatus = async (admin, targetId) => {
+        try {
+           const row = await findUserRow(targetId);
+           if (!row) return alert("Usuário não encontrado.");
+           const user = row.data;
+           if (user.username === ROOT_USERNAME) return alert("Não pode desativar o Root.");
+           const newStatus = !(user.isActive ?? true);
+           user.isActive = newStatus;
+           await supabase.from('users').update({ data: user }).eq('id', row.id);
+           alert(`Usuário ${newStatus ? 'ATIVADO' : 'DESATIVADO'}!`);
+           return true;
+        } catch(e) { alert(e.message); return false; }
+      };
+
+      const deleteUserFull = async (admin, targetId) => {
+         const row = await findUserRow(targetId);
+         if (!row) return alert("Usuário não encontrado.");
+         const user = row.data;
+         if (user.username === ROOT_USERNAME) return alert("Não pode apagar o Root.");
+         if (prompt(`Digite ELIMINAR para apagar ${user.username}`) !== 'ELIMINAR') return;
+         try {
+            await supabase.from('logs').delete().eq('data->>username', user.username);
+            await supabase.from('inspections').delete().eq('data->>savedBy', user.username);
+            const { data: employees } = await supabase.from('users').select('*').eq('data->>createdBy', user.id);
+            if (employees) {
+               for (let emp of employees) {
+                  await supabase.from('users').delete().eq('id', emp.id);
+               }
+            }
+            await supabase.from('users').delete().eq('id', row.id);
+            alert("Usuário excluído!");
+            return true;
+         } catch (e) { alert("Erro: " + e.message); return false; }
+      };
+      
+      const saveBranding = async (admin, branding) => {
+         try {
+             const row = await findUserRow(admin.id);
+             if (!row) return alert("Erro ao salvar.");
+             const updatedUser = { ...row.data, branding };
+             await supabase.from('users').update({ data: updatedUser }).eq('id', row.id);
+             localStorage.setItem(SESSION_KEY, JSON.stringify(updatedUser));
+             alert("Personalização salva!");
+             return true;
+         } catch(e) { alert(e.message); return false; }
+      };
+
+      // --- COMPONENTS ---
+      const Login = ({ onLogin }) => {
+        const [u, setU] = useState('');
+        const [p, setP] = useState('');
+        return (
+          <div className="flex h-screen items-center justify-center bg-gray-100">
+             <div className="bg-white p-8 border border-black shadow-xl w-96">
+                <h1 className="text-xl font-bold uppercase text-center mb-6">AutoCheck Admin</h1>
+                <input className="w-full p-2 border border-black mb-4" placeholder="Usuário" value={u} onChange={e=>setU(e.target.value)} />
+                <input className="w-full p-2 border border-black mb-6" type="password" placeholder="Senha" value={p} onChange={e=>setP(e.target.value)} />
+                <button onClick={() => loginUser(u,p).then(user => user && onLogin(user))} className="w-full bg-black text-white p-3 font-bold uppercase">Entrar</button>
+             </div>
+          </div>
+        );
+      };
+
+      const Dashboard = ({ user, onLogout }) => {
+         const [users, setUsers] = useState([]);
+         const [tab, setTab] = useState('users');
+         const [branding, setBranding] = useState(user.branding || {
+             companyName: '', primaryColor: '#000000', checklistTitle: 'Checklist', fontFamily: FONTS[0].value, logoBase64: ''
+         });
+         
+         const load = async () => setUsers(await getUsers());
+         useEffect(() => { load(); }, []);
+         
+         const handleLogo = (e) => {
+             const f = e.target.files[0];
+             if(f) {
+                 const r = new FileReader();
+                 r.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const c = document.createElement('canvas');
+                        const MAX=180;
+                        const scale = MAX/img.width;
+                        c.width = scale>=1 ? img.width : MAX;
+                        c.height = img.height * (scale>=1?1:scale);
+                        const ctx = c.getContext('2d');
+                        ctx.drawImage(img,0,0,c.width,c.height);
+                        setBranding({...branding, logoBase64: c.toDataURL('image/jpeg', 0.5)});
+                    };
+                    img.src = ev.target.result;
+                 };
+                 r.readAsDataURL(f);
+             }
+         };
+
+         return (
+            <div className="h-screen overflow-hidden flex flex-col font-sans">
+               {/* Header Fixed */}
+               <div className="flex-none bg-black text-white p-4 flex justify-between items-center">
+                  <span className="font-bold uppercase">Painel {user.username}</span>
+                  <div className="flex gap-4">
+                     <button onClick={()=>setTab('users')} className={`text-xs font-bold uppercase ${tab==='users'?'underline':''}`}>Usuários</button>
+                     <button onClick={()=>setTab('branding')} className={`text-xs font-bold uppercase ${tab==='branding'?'underline':''}`}>Personalização</button>
+                     <button onClick={onLogout} className="bg-white text-black px-3 py-1 text-xs font-bold uppercase">Sair</button>
+                  </div>
+               </div>
+               
+               {/* Content Scrollable */}
+               <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+                  {tab === 'users' && (
+                      <div>
+                          <button onClick={load} className="mb-4 text-xs font-bold uppercase underline">Atualizar Lista</button>
+                          <table className="w-full border border-black text-xs text-left bg-white">
+                             <thead className="bg-gray-100"><tr><th className="p-2">User</th><th className="p-2">Role</th><th className="p-2">Status</th><th className="p-2">Ações</th></tr></thead>
+                             <tbody>
+                                {users.map(u => (
+                                   <tr key={u.id} className="border-b">
+                                      <td className="p-2 font-bold">{u.username}</td>
+                                      <td className="p-2 uppercase">{u.role}</td>
+                                      <td className="p-2">
+                                         <button onClick={() => toggleStatus(user, u.id).then(load)} className={`px-2 py-1 text-white font-bold ${u.isActive!==false ? 'bg-green-600' : 'bg-red-600'}`}>
+                                            {u.isActive!==false ? 'ATIVO' : 'OFF'}
+                                         </button>
+                                      </td>
+                                      <td className="p-2">
+                                         {u.username !== ROOT_USERNAME && (
+                                            <button onClick={() => deleteUserFull(user, u.id).then(load)} className="text-red-600 font-bold underline">EXCLUIR</button>
+                                         )}
+                                      </td>
+                                   </tr>
+                                ))}
+                             </tbody>
+                          </table>
+                      </div>
+                  )}
+                  
+                  {tab === 'branding' && (
+                      <div className="max-w-md mx-auto bg-white p-6 border border-gray-300 shadow-sm space-y-4">
+                          <h2 className="font-bold text-lg uppercase mb-4">Personalização</h2>
+                          <div>
+                              <label className="block text-xs font-bold uppercase mb-1">Nome Empresa</label>
+                              <input className="w-full p-2 border" value={branding.companyName} onChange={e=>setBranding({...branding, companyName:e.target.value})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold uppercase mb-1">Título Checklist</label>
+                              <input className="w-full p-2 border" value={branding.checklistTitle} onChange={e=>setBranding({...branding, checklistTitle:e.target.value})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold uppercase mb-1">Cor</label>
+                              <input type="color" className="w-full h-10 p-0 border" value={branding.primaryColor} onChange={e=>setBranding({...branding, primaryColor:e.target.value})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold uppercase mb-1">Logo</label>
+                              <input type="file" accept="image/*" onChange={handleLogo} className="text-xs" />
+                              {branding.logoBase64 && <img src={branding.logoBase64} className="h-16 mt-2 border" />}
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold uppercase mb-1">Fonte</label>
+                              <select className="w-full p-2 border" value={branding.fontFamily} onChange={e=>setBranding({...branding, fontFamily:e.target.value})}>
+                                  {FONTS.map(f=><option key={f.value} value={f.value}>{f.name}</option>)}
+                              </select>
+                          </div>
+                          <button onClick={()=>saveBranding(user, branding)} className="w-full bg-black text-white p-3 font-bold uppercase mt-4">Salvar</button>
+                      </div>
+                  )}
+               </div>
+            </div>
+         );
+      };
+
+      const App = () => {
+         const [user, setUser] = useState(getCurrentUser());
+         if (!user) return <Login onLogin={setUser} />;
+         return <Dashboard user={user} onLogout={() => { logoutUser(); setUser(null); }} />;
+      };
+
+      createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
